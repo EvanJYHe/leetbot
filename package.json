@@ -1,0 +1,26 @@
+{
+  "name": "leetcode-bot",
+  "version": "0.1.0",
+  "description": "Discord bot that tracks new LeetCode solves and posts them to a channel.",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "deploy-commands": "tsx src/discord/registerCommands.ts",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.19.3",
+    "discord.js": "latest",
+    "dotenv": "latest"
+  },
+  "devDependencies": {
+    "@types/node": "latest",
+    "prisma": "^6.19.3",
+    "tsx": "latest",
+    "typescript": "latest"
+  }
+}
