@@ -38,7 +38,8 @@ export const execute: CommandExecute = async (interaction, context) => {
           "No new solves found.",
           `Checked ${result.checkedAcceptedCount} recent accepted submission(s).`,
           `Already seen submissions: ${result.duplicateSubmissionCount}.`,
-          `Resubmissions for already-solved problems: ${result.resubmissionCount}.`,
+          `Resubmissions found: ${result.resubmissionCount}.`,
+          `Resubmissions skipped by 24-hour cooldown: ${result.resubmissionCooldownCount}.`,
           `Latest accepted submission: ${latestAcceptedText}`,
           "If you just solved a problem, wait a minute for LeetCode's recent submissions feed to update, then run `/sync` again."
         ].join("\n")
@@ -47,7 +48,7 @@ export const execute: CommandExecute = async (interaction, context) => {
     }
 
     await interaction.editReply(
-      `Posted ${result.postedCount} new solve(s). Checked ${result.checkedAcceptedCount} recent accepted submission(s).`
+      `Posted ${result.newSolvePostedCount} new solve(s) and ${result.resubmissionPostedCount} resubmission(s). Checked ${result.checkedAcceptedCount} recent accepted submission(s).`
     );
   } catch (error) {
     logger.error("Manual LeetCode sync failed", error, {

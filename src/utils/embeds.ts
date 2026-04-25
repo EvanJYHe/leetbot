@@ -11,15 +11,17 @@ export function createSolveEmbed(params: {
   discordUsername: string;
   submission: LeetCodeSubmission;
   difficulty: string | null;
+  isResubmission?: boolean;
 }): EmbedBuilder {
-  const { discordUsername, submission, difficulty } = params;
+  const { discordUsername, submission, difficulty, isResubmission = false } = params;
   const difficultyLabel = difficulty ? `${difficultyEmoji[difficulty] ?? ""} ${difficulty}`.trim() : "Unknown";
 
   return new EmbedBuilder()
-    .setTitle(`✅ New solve: ${submission.problemTitle}`)
+    .setTitle(`${isResubmission ? "🔁 Resubmission" : "✅ New solve"}: ${submission.problemTitle}`)
     .setURL(`https://leetcode.com/problems/${submission.problemSlug}/`)
     .addFields(
       { name: "User", value: discordUsername, inline: true },
+      { name: "Type", value: isResubmission ? "Resubmission" : "New solved problem", inline: true },
       { name: "Difficulty", value: difficultyLabel, inline: true },
       { name: "Language", value: submission.language ?? "Unknown", inline: true },
       {

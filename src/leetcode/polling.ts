@@ -13,6 +13,8 @@ import {
 } from "./client.js";
 import type { LeetCodeSubmission } from "./types.js";
 
+const RESUBMISSION_POST_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+
 interface TrackingSeedResult {
   user: User;
   solvedProblemCount: number;
@@ -21,15 +23,19 @@ interface TrackingSeedResult {
 
 interface ProcessUserResult {
   postedCount: number;
+  newSolvePostedCount: number;
+  resubmissionPostedCount: number;
   checkedAcceptedCount: number;
   duplicateSubmissionCount: number;
   resubmissionCount: number;
+  resubmissionCooldownCount: number;
   latestAcceptedSubmission: LeetCodeSubmission | null;
 }
 
 type SubmissionDecision =
   | { kind: "duplicate" }
-  | { kind: "resubmission" }
+  | { kind: "resubmissionCooldown" }
+  | { kind: "resubmissionToPost"; difficulty: string | null }
   | { kind: "newSolve"; difficulty: string | null };
 
 export class TrackingUsernameConflictError extends Error {
@@ -170,7 +176,20 @@ async function saveSubmissionDecision(user: User, submission: LeetCodeSubmission
     });
 
     if (solvedProblem) {
-      return { kind: "resubmission" };
+      const lastPostedAt = solvedProblem.lastResubmissionPostedAt;
+      const canPostResubmission =
+        !lastPostedAt || Date.now() - lastPostedAt.getTime() >= RESUBMISSION_POST_COOLDOWN_MS;
+
+      if (!canPostResubmission) {
+        return { kind: "resubmissionCooldown" };
+      }
+
+      await tx.solvedProblem.update({
+        where: { id: solvedProblem.id },
+        data: { lastResubmissionPostedAt: new Date() }
+      });
+
+      return { kind: "resubmissionToPost", difficulty: solvedProblem.difficulty ?? difficulty };
     }
 
     const createdSolvedProblem = await tx.solvedProblem.createMany({
@@ -185,7 +204,7 @@ async function saveSubmissionDecision(user: User, submission: LeetCodeSubmission
     });
 
     if (createdSolvedProblem.count === 0) {
-      return { kind: "resubmission" };
+      return { kind: "resubmissionCooldown" };
     }
 
     return { kind: "newSolve", difficulty };
@@ -205,8 +224,11 @@ export async function processTrackedUser(params: {
 
   const postChannel = params.shouldPost ? await getPostChannel(params.client, params.config) : null;
   let postedCount = 0;
+  let newSolvePostedCount = 0;
+  let resubmissionPostedCount = 0;
   let duplicateSubmissionCount = 0;
   let resubmissionCount = 0;
+  let resubmissionCooldownCount = 0;
 
   for (const submission of sortedAcceptedSubmissions) {
     try {
@@ -217,19 +239,21 @@ export async function processTrackedUser(params: {
         continue;
       }
 
-      if (decision.kind === "resubmission") {
+      if (decision.kind === "resubmissionCooldown") {
         resubmissionCount += 1;
+        resubmissionCooldownCount += 1;
         continue;
       }
 
-      if (decision.kind !== "newSolve") {
+      if (decision.kind !== "newSolve" && decision.kind !== "resubmissionToPost") {
         continue;
       }
 
       if (!postChannel) {
-        logger.warn("New solve saved but no post channel was available", {
+        logger.warn("Submission saved but no post channel was available", {
           discordUserId: params.user.discordUserId,
-          problemSlug: submission.problemSlug
+          problemSlug: submission.problemSlug,
+          decisionKind: decision.kind
         });
         continue;
       }
@@ -239,11 +263,19 @@ export async function processTrackedUser(params: {
           createSolveEmbed({
             discordUsername: params.user.discordUsername,
             submission,
-            difficulty: decision.difficulty
+            difficulty: decision.difficulty,
+            isResubmission: decision.kind === "resubmissionToPost"
           })
         ]
       });
       postedCount += 1;
+
+      if (decision.kind === "newSolve") {
+        newSolvePostedCount += 1;
+      } else {
+        resubmissionCount += 1;
+        resubmissionPostedCount += 1;
+      }
     } catch (error) {
       logger.error("Failed to process accepted LeetCode submission", error, {
         discordUserId: params.user.discordUserId,
@@ -254,9 +286,12 @@ export async function processTrackedUser(params: {
 
   return {
     postedCount,
+    newSolvePostedCount,
+    resubmissionPostedCount,
     checkedAcceptedCount: sortedAcceptedSubmissions.length,
     duplicateSubmissionCount,
     resubmissionCount,
+    resubmissionCooldownCount,
     latestAcceptedSubmission: sortedAcceptedSubmissions.at(-1) ?? null
   };
 }

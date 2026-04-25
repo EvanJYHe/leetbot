@@ -21,14 +21,15 @@ model User {
 }
 
 model SolvedProblem {
-  id            String   @id @default(cuid())
-  discordUserId String
-  problemSlug   String
-  problemTitle  String
-  difficulty    String?
-  firstSolvedAt DateTime
-  createdAt     DateTime @default(now())
-  user          User     @relation(fields: [discordUserId], references: [discordUserId], onDelete: Cascade)
+  id                       String    @id @default(cuid())
+  discordUserId            String
+  problemSlug              String
+  problemTitle             String
+  difficulty               String?
+  firstSolvedAt            DateTime
+  lastResubmissionPostedAt DateTime?
+  createdAt                DateTime  @default(now())
+  user                     User      @relation(fields: [discordUserId], references: [discordUserId], onDelete: Cascade)
 
   @@unique([discordUserId, problemSlug])
   @@index([discordUserId])
