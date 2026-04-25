@@ -4,7 +4,13 @@ import type { AppConfig } from "../config.js";
 import { prisma } from "../db/prisma.js";
 import { createSolveEmbed } from "../utils/embeds.js";
 import { logger } from "../utils/logger.js";
-import { getAcceptedSubmissions, getProblemDetails, getRecentSubmissions, getUserSolvedProblems } from "./client.js";
+import {
+  getAcceptedSubmissions,
+  getProblemDetails,
+  getRecentSubmissions,
+  getUserSolvedProblems,
+  hasUsableSubmissionId
+} from "./client.js";
 import type { LeetCodeSubmission } from "./types.js";
 
 interface TrackingSeedResult {
@@ -23,6 +29,12 @@ type SubmissionDecision =
   | { kind: "resubmission" }
   | { kind: "newSolve"; difficulty: string | null };
 
+export class TrackingUsernameConflictError extends Error {
+  public constructor(public readonly currentLeetCodeUsername: string) {
+    super("Discord user is already tracking a different LeetCode username");
+  }
+}
+
 export async function getOrCreateGuildConfig(config: AppConfig) {
   return prisma.guildConfig.upsert({
     where: { guildId: config.discordGuildId },
@@ -40,6 +52,14 @@ export async function initializeTracking(params: {
   discordUsername: string;
   leetcodeUsername: string;
 }): Promise<TrackingSeedResult> {
+  const existingUser = await prisma.user.findUnique({
+    where: { discordUserId: params.discordUserId }
+  });
+
+  if (existingUser && existingUser.leetcodeUsername !== params.leetcodeUsername) {
+    throw new TrackingUsernameConflictError(existingUser.leetcodeUsername);
+  }
+
   const [solvedProblems, acceptedSubmissions] = await Promise.all([
     getUserSolvedProblems(params.leetcodeUsername),
     getAcceptedSubmissions(params.leetcodeUsername, 100)
@@ -105,12 +125,35 @@ async function getPostChannel(client: Client, config: AppConfig): Promise<GuildT
 }
 
 async function saveSubmissionDecision(user: User, submission: LeetCodeSubmission): Promise<SubmissionDecision> {
+  if (!hasUsableSubmissionId(submission.submissionId)) {
+    logger.warn("Ignoring accepted LeetCode submission without a usable submission ID", {
+      discordUserId: user.discordUserId,
+      problemSlug: submission.problemSlug,
+      submissionId: submission.submissionId
+    });
+    return { kind: "duplicate" };
+  }
+
+  const problemDetails = await getProblemDetails(submission.problemSlug);
+  const difficulty = problemDetails?.difficulty ?? null;
+
+  // This transaction is the core bot rule: submission ID prevents exact duplicates,
+  // while problem slug prevents posting resubmissions for already solved problems.
   return prisma.$transaction(async (tx) => {
-    const seenSubmission = await tx.seenSubmission.findUnique({
-      where: { submissionId: submission.submissionId }
+    const createdSeenSubmission = await tx.seenSubmission.createMany({
+      data: [{
+        submissionId: submission.submissionId,
+        discordUserId: user.discordUserId,
+        problemSlug: submission.problemSlug,
+        problemTitle: submission.problemTitle,
+        status: submission.status,
+        language: submission.language,
+        submittedAt: submission.submittedAt
+      }],
+      skipDuplicates: true
     });
 
-    if (seenSubmission) {
+    if (createdSeenSubmission.count === 0) {
       return { kind: "duplicate" };
     }
 
@@ -123,34 +166,24 @@ async function saveSubmissionDecision(user: User, submission: LeetCodeSubmission
       }
     });
 
-    await tx.seenSubmission.create({
-      data: {
-        submissionId: submission.submissionId,
-        discordUserId: user.discordUserId,
-        problemSlug: submission.problemSlug,
-        problemTitle: submission.problemTitle,
-        status: submission.status,
-        language: submission.language,
-        submittedAt: submission.submittedAt
-      }
-    });
-
     if (solvedProblem) {
       return { kind: "resubmission" };
     }
 
-    const problemDetails = await getProblemDetails(submission.problemSlug);
-    const difficulty = problemDetails?.difficulty ?? null;
-
-    await tx.solvedProblem.create({
-      data: {
+    const createdSolvedProblem = await tx.solvedProblem.createMany({
+      data: [{
         discordUserId: user.discordUserId,
         problemSlug: submission.problemSlug,
         problemTitle: problemDetails?.problemTitle ?? submission.problemTitle,
         difficulty,
         firstSolvedAt: submission.submittedAt
-      }
+      }],
+      skipDuplicates: true
     });
+
+    if (createdSolvedProblem.count === 0) {
+      return { kind: "resubmission" };
+    }
 
     return { kind: "newSolve", difficulty };
   });

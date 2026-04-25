@@ -1,6 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { SlashCommandBuilder } from "discord.js";
-import { getOrCreateGuildConfig, initializeTracking } from "../../leetcode/polling.js";
+import { getOrCreateGuildConfig, initializeTracking, TrackingUsernameConflictError } from "../../leetcode/polling.js";
 import { logger } from "../../utils/logger.js";
 import type { CommandExecute } from "../types.js";
 
@@ -40,6 +40,13 @@ export const execute: CommandExecute = async (interaction, context) => {
 
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
       await interaction.editReply("That LeetCode username is already linked to another Discord user.");
+      return;
+    }
+
+    if (error instanceof TrackingUsernameConflictError) {
+      await interaction.editReply(
+        `You are already tracking ${error.currentLeetCodeUsername}. Relinking accounts is not supported yet because it needs to reset solve history safely.`
+      );
       return;
     }
 
