@@ -29,6 +29,13 @@ interface RecentSubmissionResponse {
   recentSubmissionList?: RecentSubmissionNode[];
 }
 
+interface UserStatusResponse {
+  userStatus: {
+    isSignedIn: boolean;
+    username: string;
+  };
+}
+
 interface SolvedQuestionsInfoResponse {
   solvedQuestionsInfo: {
     totalNum: number;
@@ -62,6 +69,15 @@ const recentSubmissionsQuery = `
       timestamp
       statusDisplay
       lang
+    }
+  }
+`;
+
+const userStatusQuery = `
+  query userStatus {
+    userStatus {
+      isSignedIn
+      username
     }
   }
 `;
@@ -194,6 +210,31 @@ function hasAuthenticatedSolvedHistoryFor(username: string): boolean {
   return Boolean(getLeetCodeSessionCookie() && getConfiguredLeetCodeUsername() === username.trim().toLowerCase());
 }
 
+async function getLeetCodeAuthStatus(): Promise<UserStatusResponse["userStatus"]> {
+  const data = await graphqlRequest<UserStatusResponse>(userStatusQuery, {});
+  return data.userStatus;
+}
+
+async function getRecentAcceptedSolvedProblems(username: string): Promise<LeetCodeSolvedProblem[]> {
+  const acceptedSubmissions = await getAcceptedSubmissions(username, 100);
+  const solvedProblems = new Map<string, LeetCodeSolvedProblem>();
+
+  for (const submission of acceptedSubmissions) {
+    const existing = solvedProblems.get(submission.problemSlug);
+
+    if (!existing || submission.submittedAt < existing.firstSolvedAt) {
+      solvedProblems.set(submission.problemSlug, {
+        problemSlug: submission.problemSlug,
+        problemTitle: submission.problemTitle,
+        difficulty: null,
+        firstSolvedAt: submission.submittedAt
+      });
+    }
+  }
+
+  return [...solvedProblems.values()];
+}
+
 function toSubmission(node: RecentSubmissionNode): LeetCodeSubmission {
   return {
     submissionId: node.id,
@@ -260,26 +301,36 @@ export async function getAcceptedSubmissions(
 
 export async function getUserSolvedProblems(username: string): Promise<LeetCodeSolvedProblem[]> {
   if (!hasAuthenticatedSolvedHistoryFor(username)) {
-    const acceptedSubmissions = await getAcceptedSubmissions(username, 100);
-    const solvedProblems = new Map<string, LeetCodeSolvedProblem>();
-
-    for (const submission of acceptedSubmissions) {
-      const existing = solvedProblems.get(submission.problemSlug);
-
-      if (!existing || submission.submittedAt < existing.firstSolvedAt) {
-        solvedProblems.set(submission.problemSlug, {
-          problemSlug: submission.problemSlug,
-          problemTitle: submission.problemTitle,
-          difficulty: null,
-          firstSolvedAt: submission.submittedAt
-        });
-      }
-    }
-
-    return [...solvedProblems.values()];
+    logger.info("Using public recent accepted submissions for LeetCode solved problem seed", {
+      username,
+      reason: "authenticated history is not configured for this username"
+    });
+    return getRecentAcceptedSolvedProblems(username);
   }
 
   try {
+    const authStatus = await getLeetCodeAuthStatus();
+    const authenticatedUsername = authStatus.username.toLowerCase();
+
+    if (!authStatus.isSignedIn) {
+      logger.warn("LeetCode authenticated history is configured, but LeetCode says the session is not signed in; falling back to public recent submissions", {
+        username,
+        configuredLeetCodeUsername: getConfiguredLeetCodeUsername(),
+        hasLeetCodeSession: Boolean(getLeetCodeSessionCookie()),
+        hasLeetCodeCsrfToken: Boolean(process.env.LEETCODE_CSRF_TOKEN?.trim())
+      });
+      return getRecentAcceptedSolvedProblems(username);
+    }
+
+    if (authenticatedUsername !== username.trim().toLowerCase()) {
+      logger.warn("LeetCode authenticated history is configured for a different signed-in user; falling back to public recent submissions", {
+        requestedUsername: username,
+        signedInUsername: authStatus.username,
+        configuredLeetCodeUsername: getConfiguredLeetCodeUsername()
+      });
+      return getRecentAcceptedSolvedProblems(username);
+    }
+
     const solvedProblems: LeetCodeSolvedProblem[] = [];
     let pageNo = 1;
     let total = Number.POSITIVE_INFINITY;
@@ -315,8 +366,10 @@ export async function getUserSolvedProblems(username: string): Promise<LeetCodeS
 
     return solvedProblems;
   } catch (error) {
-    logger.error("Failed to fetch authenticated LeetCode solved problem history", error, { username });
-    throw error;
+    logger.error("Failed to fetch authenticated LeetCode solved problem history; falling back to public recent submissions", error, {
+      username
+    });
+    return getRecentAcceptedSolvedProblems(username);
   }
 }
 
