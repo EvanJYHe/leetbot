@@ -29,11 +29,26 @@ export const execute: CommandExecute = async (interaction, context) => {
     });
 
     if (result.postedCount === 0) {
-      await interaction.editReply("No new solves found.");
+      const latestAcceptedText = result.latestAcceptedSubmission
+        ? `${result.latestAcceptedSubmission.problemTitle} (${result.latestAcceptedSubmission.problemSlug}) at ${result.latestAcceptedSubmission.submittedAt.toISOString()}`
+        : "LeetCode did not return any recent accepted submissions.";
+
+      await interaction.editReply(
+        [
+          "No new solves found.",
+          `Checked ${result.checkedAcceptedCount} recent accepted submission(s).`,
+          `Already seen submissions: ${result.duplicateSubmissionCount}.`,
+          `Resubmissions for already-solved problems: ${result.resubmissionCount}.`,
+          `Latest accepted submission: ${latestAcceptedText}`,
+          "If you just solved a problem, wait a minute for LeetCode's recent submissions feed to update, then run `/sync` again."
+        ].join("\n")
+      );
       return;
     }
 
-    await interaction.editReply(`Posted ${result.postedCount} new solve(s).`);
+    await interaction.editReply(
+      `Posted ${result.postedCount} new solve(s). Checked ${result.checkedAcceptedCount} recent accepted submission(s).`
+    );
   } catch (error) {
     logger.error("Manual LeetCode sync failed", error, {
       discordUserId: interaction.user.id

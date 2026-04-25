@@ -22,6 +22,9 @@ interface TrackingSeedResult {
 interface ProcessUserResult {
   postedCount: number;
   checkedAcceptedCount: number;
+  duplicateSubmissionCount: number;
+  resubmissionCount: number;
+  latestAcceptedSubmission: LeetCodeSubmission | null;
 }
 
 type SubmissionDecision =
@@ -202,10 +205,22 @@ export async function processTrackedUser(params: {
 
   const postChannel = params.shouldPost ? await getPostChannel(params.client, params.config) : null;
   let postedCount = 0;
+  let duplicateSubmissionCount = 0;
+  let resubmissionCount = 0;
 
   for (const submission of sortedAcceptedSubmissions) {
     try {
       const decision = await saveSubmissionDecision(params.user, submission);
+
+      if (decision.kind === "duplicate") {
+        duplicateSubmissionCount += 1;
+        continue;
+      }
+
+      if (decision.kind === "resubmission") {
+        resubmissionCount += 1;
+        continue;
+      }
 
       if (decision.kind !== "newSolve") {
         continue;
@@ -239,7 +254,10 @@ export async function processTrackedUser(params: {
 
   return {
     postedCount,
-    checkedAcceptedCount: sortedAcceptedSubmissions.length
+    checkedAcceptedCount: sortedAcceptedSubmissions.length,
+    duplicateSubmissionCount,
+    resubmissionCount,
+    latestAcceptedSubmission: sortedAcceptedSubmissions.at(-1) ?? null
   };
 }
 

@@ -24,6 +24,13 @@ export const execute: CommandExecute = async (interaction, context) => {
     getLastSeenSubmission(interaction.user.id),
     getOrCreateGuildConfig(context.config)
   ]);
+  const seenSubmissionCount = await prisma.seenSubmission.count({
+    where: { discordUserId: interaction.user.id }
+  });
+  const authenticatedLeetCodeUsername = process.env.LEETCODE_USERNAME?.trim().toLowerCase();
+  const trackingUsesAuthenticatedHistory =
+    Boolean(process.env.LEETCODE_SESSION && process.env.LEETCODE_CSRF_TOKEN) &&
+    authenticatedLeetCodeUsername === user.leetcodeUsername.toLowerCase();
 
   const lastSeenText = lastSeenSubmission
     ? `${lastSeenSubmission.problemTitle} (${lastSeenSubmission.language ?? "Unknown"}) at ${lastSeenSubmission.submittedAt.toISOString()}`
@@ -34,9 +41,12 @@ export const execute: CommandExecute = async (interaction, context) => {
       `Discord user: ${interaction.user.username}`,
       `LeetCode username: ${user.leetcodeUsername}`,
       `Known solved problems: ${knownSolvedCount}`,
+      `Seen accepted submissions: ${seenSubmissionCount}`,
       `Last seen submission: ${lastSeenText}`,
+      `History mode: ${trackingUsesAuthenticatedHistory ? "authenticated full-history seed" : "public recent-submissions seed"}`,
       `Polling interval: ${guildConfig.pollIntervalMinutes} minute(s)`,
-      `Posting channel: <#${guildConfig.postChannelId}>`
+      `Posting channel: <#${guildConfig.postChannelId}>`,
+      "Use `/sync` to check recent accepted submissions immediately."
     ].join("\n")
   );
 };
