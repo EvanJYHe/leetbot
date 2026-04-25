@@ -61,12 +61,21 @@ export async function initializeTracking(params: {
   discordUsername: string;
   leetcodeUsername: string;
 }): Promise<TrackingSeedResult> {
-  const existingUser = await prisma.user.findUnique({
-    where: { discordUserId: params.discordUserId }
-  });
+  const [existingUser, existingLeetCodeUser] = await Promise.all([
+    prisma.user.findUnique({
+      where: { discordUserId: params.discordUserId }
+    }),
+    prisma.user.findUnique({
+      where: { leetcodeUsername: params.leetcodeUsername }
+    })
+  ]);
 
   if (existingUser && existingUser.leetcodeUsername !== params.leetcodeUsername) {
     throw new TrackingUsernameConflictError(existingUser.leetcodeUsername);
+  }
+
+  if (existingLeetCodeUser && existingLeetCodeUser.discordUserId !== params.discordUserId) {
+    throw new TrackingUsernameConflictError(existingLeetCodeUser.leetcodeUsername);
   }
 
   const [solvedProblems, acceptedSubmissions] = await Promise.all([
@@ -74,18 +83,21 @@ export async function initializeTracking(params: {
     getAcceptedSubmissions(params.leetcodeUsername, 100)
   ]);
 
-  const user = await prisma.user.upsert({
-    where: { discordUserId: params.discordUserId },
-    create: {
-      discordUserId: params.discordUserId,
-      discordUsername: params.discordUsername,
-      leetcodeUsername: params.leetcodeUsername
-    },
-    update: {
-      discordUsername: params.discordUsername,
-      leetcodeUsername: params.leetcodeUsername
-    }
-  });
+  const user = existingLeetCodeUser
+    ? await prisma.user.update({
+        where: { leetcodeUsername: params.leetcodeUsername },
+        data: {
+          discordUserId: params.discordUserId,
+          discordUsername: params.discordUsername
+        }
+      })
+    : await prisma.user.create({
+        data: {
+          discordUserId: params.discordUserId,
+          discordUsername: params.discordUsername,
+          leetcodeUsername: params.leetcodeUsername
+        }
+      });
 
   await prisma.solvedProblem.createMany({
     data: solvedProblems.map((problem) => ({
