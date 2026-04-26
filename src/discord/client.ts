@@ -1,8 +1,20 @@
 import { Client, Events, GatewayIntentBits } from "discord.js";
 import type { AppConfig } from "../config.js";
+import { getOrCreateGuildConfig } from "../leetcode/polling.js";
 import { logger } from "../utils/logger.js";
 import { commandMap } from "./commands/index.js";
 import type { BotContext } from "./types.js";
+
+const setupCommandNames = new Set(["set-channel", "set-command-channel"]);
+
+async function commandIsAllowedInChannel(commandName: string, channelId: string, config: AppConfig): Promise<boolean> {
+  if (setupCommandNames.has(commandName)) {
+    return true;
+  }
+
+  const guildConfig = await getOrCreateGuildConfig(config);
+  return !guildConfig.commandChannelId || guildConfig.commandChannelId === channelId;
+}
 
 export function createDiscordClient(config: AppConfig): Client {
   const client = new Client({
@@ -28,6 +40,17 @@ export function createDiscordClient(config: AppConfig): Client {
     const context: BotContext = { client, config };
 
     try {
+      const isAllowedChannel = await commandIsAllowedInChannel(interaction.commandName, interaction.channelId, config);
+
+      if (!isAllowedChannel) {
+        const guildConfig = await getOrCreateGuildConfig(config);
+        await interaction.reply({
+          content: `Please use bot commands in <#${guildConfig.commandChannelId}>.`,
+          ephemeral: true
+        });
+        return;
+      }
+
       await command.execute(interaction, context);
     } catch (error) {
       logger.error("Discord command failed", error, {

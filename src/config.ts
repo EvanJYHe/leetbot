@@ -5,10 +5,12 @@ export interface AppConfig {
   discordClientId: string;
   discordGuildId: string;
   discordChannelId: string;
+  discordCommandChannelId: string | null;
   databaseUrl: string;
   leetcodePollIntervalMinutes: number;
   weeklyReportDay: number;
   weeklyReportHourUtc: number;
+  autoDeployCommands: boolean;
 }
 
 function requiredEnv(name: string): string {
@@ -41,15 +43,21 @@ function parseIntegerEnv(name: string, value: string | undefined, fallback: numb
   return parsed;
 }
 
+function parseBooleanEnv(value: string | undefined): boolean {
+  return value?.toLowerCase() === "true";
+}
+
 export function loadConfig(): AppConfig {
   return {
     discordToken: requiredEnv("DISCORD_TOKEN"),
     discordClientId: requiredEnv("DISCORD_CLIENT_ID"),
     discordGuildId: requiredEnv("DISCORD_GUILD_ID"),
     discordChannelId: requiredEnv("DISCORD_CHANNEL_ID"),
+    discordCommandChannelId: process.env.DISCORD_COMMAND_CHANNEL_ID?.trim() || null,
     databaseUrl: requiredEnv("DATABASE_URL"),
     leetcodePollIntervalMinutes: parsePollInterval(process.env.LEETCODE_POLL_INTERVAL_MINUTES),
     weeklyReportDay: parseIntegerEnv("WEEKLY_REPORT_DAY", process.env.WEEKLY_REPORT_DAY, 0, 0, 6),
-    weeklyReportHourUtc: parseIntegerEnv("WEEKLY_REPORT_HOUR_UTC", process.env.WEEKLY_REPORT_HOUR_UTC, 12, 0, 23)
+    weeklyReportHourUtc: parseIntegerEnv("WEEKLY_REPORT_HOUR_UTC", process.env.WEEKLY_REPORT_HOUR_UTC, 12, 0, 23),
+    autoDeployCommands: parseBooleanEnv(process.env.AUTO_DEPLOY_COMMANDS)
   };
 }

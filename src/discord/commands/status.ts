@@ -46,6 +46,7 @@ export const execute: CommandExecute = async (interaction, context) => {
       `History mode: ${trackingUsesAuthenticatedHistory ? "authenticated full-history seed" : "public recent-submissions seed"}`,
       `Polling interval: ${guildConfig.pollIntervalMinutes} minute(s)`,
       `Posting channel: <#${guildConfig.postChannelId}>`,
+      `Command channel: ${guildConfig.commandChannelId ? `<#${guildConfig.commandChannelId}>` : "Any channel"}`,
       "Use `/sync` to check recent accepted submissions immediately."
     ].join("\n")
   );

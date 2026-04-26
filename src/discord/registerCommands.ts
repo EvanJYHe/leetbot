@@ -1,10 +1,9 @@
 import { REST, Routes } from "discord.js";
-import { loadConfig } from "../config.js";
+import { type AppConfig, loadConfig } from "../config.js";
 import { logger } from "../utils/logger.js";
 import { commands } from "./commands/index.js";
 
-export async function registerCommands(): Promise<void> {
-  const config = loadConfig();
+export async function registerCommands(config: AppConfig = loadConfig()): Promise<void> {
   const rest = new REST({ version: "10" }).setToken(config.discordToken);
   const commandPayload = commands.map((command) => command.data.toJSON());
 

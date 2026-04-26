@@ -20,7 +20,7 @@ export const data = new SlashCommandBuilder()
   );
 
 export const execute: CommandExecute = async (interaction) => {
-  await interaction.deferReply({ ephemeral: true });
+  await interaction.deferReply();
 
   const user = await prisma.user.findUnique({
     where: { discordUserId: interaction.user.id }

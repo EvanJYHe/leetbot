@@ -2,6 +2,7 @@ import type { SlashCommandBuilder, SlashCommandOptionsOnlyBuilder } from "discor
 import * as leaderboard from "./leaderboard.js";
 import * as ping from "./ping.js";
 import * as setChannel from "./setChannel.js";
+import * as setCommandChannel from "./setCommandChannel.js";
 import * as status from "./status.js";
 import * as stats from "./stats.js";
 import * as sync from "./sync.js";
@@ -15,6 +16,15 @@ export interface CommandDefinition {
   execute: CommandExecute;
 }
 
-export const commands: CommandDefinition[] = [ping, track, status, sync, leaderboard, stats, setChannel];
+export const commands: CommandDefinition[] = [
+  ping,
+  track,
+  status,
+  sync,
+  leaderboard,
+  stats,
+  setChannel,
+  setCommandChannel
+];
 
 export const commandMap = new Map(commands.map((command) => [command.data.name, command]));

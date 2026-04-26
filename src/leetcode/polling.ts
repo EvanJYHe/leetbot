@@ -50,9 +50,12 @@ export async function getOrCreateGuildConfig(config: AppConfig) {
     create: {
       guildId: config.discordGuildId,
       postChannelId: config.discordChannelId,
+      commandChannelId: config.discordCommandChannelId,
       pollIntervalMinutes: config.leetcodePollIntervalMinutes
     },
-    update: {}
+    update: {
+      ...(config.discordCommandChannelId ? { commandChannelId: config.discordCommandChannelId } : {})
+    }
   });
 }
 

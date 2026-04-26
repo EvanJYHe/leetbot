@@ -1,5 +1,6 @@
 import { loadConfig } from "./config.js";
 import { createDiscordClient } from "./discord/client.js";
+import { registerCommands } from "./discord/registerCommands.js";
 import { prisma } from "./db/prisma.js";
 import { getOrCreateGuildConfig, startPolling } from "./leetcode/polling.js";
 import { startWeeklyReportScheduler } from "./reports/scheduler.js";
@@ -28,6 +29,10 @@ process.on("unhandledRejection", (reason) => {
 });
 
 async function main(): Promise<void> {
+  if (config.autoDeployCommands) {
+    await registerCommands(config);
+  }
+
   await getOrCreateGuildConfig(config);
   await client.login(config.discordToken);
   startPolling(client, config);
