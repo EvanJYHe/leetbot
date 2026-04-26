@@ -7,6 +7,11 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum TrackedEventKind {
+  NEW_SOLVE
+  RESUBMISSION
+}
+
 model User {
   id               String           @id @default(cuid())
   discordUserId    String           @unique
@@ -16,6 +21,7 @@ model User {
   updatedAt        DateTime         @updatedAt
   solvedProblems   SolvedProblem[]
   seenSubmissions  SeenSubmission[]
+  trackedEvents    TrackedEvent[]
 
   @@index([leetcodeUsername])
 }
@@ -60,4 +66,36 @@ model GuildConfig {
   pollIntervalMinutes Int
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
+}
+
+model TrackedEvent {
+  id            String           @id @default(cuid())
+  discordUserId String
+  problemSlug   String
+  problemTitle  String
+  difficulty    String?
+  language      String?
+  submissionId  String           @unique
+  kind          TrackedEventKind
+  occurredAt    DateTime
+  createdAt     DateTime         @default(now())
+  user          User             @relation(fields: [discordUserId], references: [discordUserId], onDelete: Cascade)
+
+  @@index([discordUserId])
+  @@index([occurredAt])
+  @@index([kind])
+  @@index([problemSlug])
+}
+
+model WeeklyReportRun {
+  id        String   @id @default(cuid())
+  guildId   String
+  weekStart DateTime
+  weekEnd   DateTime
+  postedAt  DateTime @default(now())
+  createdAt DateTime @default(now())
+
+  @@unique([guildId, weekStart])
+  @@index([guildId])
+  @@index([weekStart])
 }

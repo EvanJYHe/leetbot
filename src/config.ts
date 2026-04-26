@@ -7,6 +7,8 @@ export interface AppConfig {
   discordChannelId: string;
   databaseUrl: string;
   leetcodePollIntervalMinutes: number;
+  weeklyReportDay: number;
+  weeklyReportHourUtc: number;
 }
 
 function requiredEnv(name: string): string {
@@ -29,6 +31,16 @@ function parsePollInterval(value: string | undefined): number {
   return parsed;
 }
 
+function parseIntegerEnv(name: string, value: string | undefined, fallback: number, min: number, max: number): number {
+  const parsed = Number(value ?? String(fallback));
+
+  if (!Number.isInteger(parsed) || parsed < min || parsed > max) {
+    throw new Error(`${name} must be an integer between ${min} and ${max}`);
+  }
+
+  return parsed;
+}
+
 export function loadConfig(): AppConfig {
   return {
     discordToken: requiredEnv("DISCORD_TOKEN"),
@@ -36,6 +48,8 @@ export function loadConfig(): AppConfig {
     discordGuildId: requiredEnv("DISCORD_GUILD_ID"),
     discordChannelId: requiredEnv("DISCORD_CHANNEL_ID"),
     databaseUrl: requiredEnv("DATABASE_URL"),
-    leetcodePollIntervalMinutes: parsePollInterval(process.env.LEETCODE_POLL_INTERVAL_MINUTES)
+    leetcodePollIntervalMinutes: parsePollInterval(process.env.LEETCODE_POLL_INTERVAL_MINUTES),
+    weeklyReportDay: parseIntegerEnv("WEEKLY_REPORT_DAY", process.env.WEEKLY_REPORT_DAY, 0, 0, 6),
+    weeklyReportHourUtc: parseIntegerEnv("WEEKLY_REPORT_HOUR_UTC", process.env.WEEKLY_REPORT_HOUR_UTC, 12, 0, 23)
   };
 }

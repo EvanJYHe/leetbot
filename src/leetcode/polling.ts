@@ -1,4 +1,4 @@
-import type { User } from "@prisma/client";
+import { TrackedEventKind, type User } from "@prisma/client";
 import type { Client, GuildTextBasedChannel } from "discord.js";
 import type { AppConfig } from "../config.js";
 import { prisma } from "../db/prisma.js";
@@ -188,6 +188,20 @@ async function saveSubmissionDecision(user: User, submission: LeetCodeSubmission
     });
 
     if (solvedProblem) {
+      await tx.trackedEvent.createMany({
+        data: [{
+          discordUserId: user.discordUserId,
+          problemSlug: submission.problemSlug,
+          problemTitle: problemDetails?.problemTitle ?? submission.problemTitle,
+          difficulty: solvedProblem.difficulty ?? difficulty,
+          language: submission.language,
+          submissionId: submission.submissionId,
+          kind: TrackedEventKind.RESUBMISSION,
+          occurredAt: submission.submittedAt
+        }],
+        skipDuplicates: true
+      });
+
       const lastPostedAt = solvedProblem.lastResubmissionPostedAt;
       const canPostResubmission =
         !lastPostedAt || Date.now() - lastPostedAt.getTime() >= RESUBMISSION_POST_COOLDOWN_MS;
@@ -216,8 +230,36 @@ async function saveSubmissionDecision(user: User, submission: LeetCodeSubmission
     });
 
     if (createdSolvedProblem.count === 0) {
+      await tx.trackedEvent.createMany({
+        data: [{
+          discordUserId: user.discordUserId,
+          problemSlug: submission.problemSlug,
+          problemTitle: problemDetails?.problemTitle ?? submission.problemTitle,
+          difficulty,
+          language: submission.language,
+          submissionId: submission.submissionId,
+          kind: TrackedEventKind.RESUBMISSION,
+          occurredAt: submission.submittedAt
+        }],
+        skipDuplicates: true
+      });
+
       return { kind: "resubmissionCooldown" };
     }
+
+    await tx.trackedEvent.createMany({
+      data: [{
+        discordUserId: user.discordUserId,
+        problemSlug: submission.problemSlug,
+        problemTitle: problemDetails?.problemTitle ?? submission.problemTitle,
+        difficulty,
+        language: submission.language,
+        submissionId: submission.submissionId,
+        kind: TrackedEventKind.NEW_SOLVE,
+        occurredAt: submission.submittedAt
+      }],
+      skipDuplicates: true
+    });
 
     return { kind: "newSolve", difficulty };
   });

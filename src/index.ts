@@ -2,6 +2,7 @@ import { loadConfig } from "./config.js";
 import { createDiscordClient } from "./discord/client.js";
 import { prisma } from "./db/prisma.js";
 import { getOrCreateGuildConfig, startPolling } from "./leetcode/polling.js";
+import { startWeeklyReportScheduler } from "./reports/scheduler.js";
 import { logger } from "./utils/logger.js";
 
 const config = loadConfig();
@@ -30,6 +31,7 @@ async function main(): Promise<void> {
   await getOrCreateGuildConfig(config);
   await client.login(config.discordToken);
   startPolling(client, config);
+  startWeeklyReportScheduler(client, config);
 }
 
 main().catch(async (error: unknown) => {
