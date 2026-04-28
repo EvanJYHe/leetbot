@@ -64,6 +64,7 @@ model GuildConfig {
   guildId             String   @unique
   postChannelId       String
   commandChannelId    String?
+  failureChannelId    String?
   pollIntervalMinutes Int
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt

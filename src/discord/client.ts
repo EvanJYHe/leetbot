@@ -5,7 +5,7 @@ import { logger } from "../utils/logger.js";
 import { commandMap } from "./commands/index.js";
 import type { BotContext } from "./types.js";
 
-const setupCommandNames = new Set(["set-channel", "set-command-channel"]);
+const setupCommandNames = new Set(["set-channel", "set-command-channel", "set-failure-channel"]);
 
 async function commandIsAllowedInChannel(commandName: string, channelId: string, config: AppConfig): Promise<boolean> {
   if (setupCommandNames.has(commandName)) {

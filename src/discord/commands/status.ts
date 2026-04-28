@@ -47,6 +47,7 @@ export const execute: CommandExecute = async (interaction, context) => {
       `Polling interval: ${guildConfig.pollIntervalMinutes} minute(s)`,
       `Posting channel: <#${guildConfig.postChannelId}>`,
       `Command channel: ${guildConfig.commandChannelId ? `<#${guildConfig.commandChannelId}>` : "Any channel"}`,
+      `Failure channel: ${guildConfig.failureChannelId ? `<#${guildConfig.failureChannelId}>` : "Not set"}`,
       "Use `/sync` to check recent accepted submissions immediately."
     ].join("\n")
   );

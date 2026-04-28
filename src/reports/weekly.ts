@@ -42,6 +42,51 @@ async function getPostChannel(client: Client, config: AppConfig): Promise<GuildT
   return channel as GuildTextBasedChannel;
 }
 
+async function getFailureChannel(client: Client, config: AppConfig): Promise<GuildTextBasedChannel | null> {
+  const guildConfig = await getOrCreateGuildConfig(config);
+
+  if (!guildConfig.failureChannelId) {
+    return null;
+  }
+
+  const guild = await client.guilds.fetch(config.discordGuildId);
+  const channel = await guild.channels.fetch(guildConfig.failureChannelId);
+
+  if (!channel?.isTextBased()) {
+    logger.warn("Weekly failure channel is not text-based", {
+      channelId: guildConfig.failureChannelId
+    });
+    return null;
+  }
+
+  return channel as GuildTextBasedChannel;
+}
+
+async function getUsersWithoutWeeklyActivity(window: WeeklyWindow) {
+  const [trackedUsers, activeEvents] = await Promise.all([
+    prisma.user.findMany({
+      orderBy: {
+        discordUsername: "asc"
+      }
+    }),
+    prisma.trackedEvent.findMany({
+      where: {
+        occurredAt: {
+          gte: window.weekStart,
+          lt: window.weekEnd
+        }
+      },
+      select: {
+        discordUserId: true
+      },
+      distinct: ["discordUserId"]
+    })
+  ]);
+  const activeDiscordUserIds = new Set(activeEvents.map((event) => event.discordUserId));
+
+  return trackedUsers.filter((user) => !activeDiscordUserIds.has(user.discordUserId));
+}
+
 export async function buildWeeklyReportEmbeds(config: AppConfig, window = getWeeklyWindow(config)): Promise<EmbedBuilder[]> {
   const summary = await getReportSummary({
     period: "week",
@@ -116,6 +161,26 @@ export async function postWeeklyReport(client: Client, config: AppConfig, now = 
 
   const embeds = await buildWeeklyReportEmbeds(config, window);
   await channel.send({ embeds });
+
+  const failureChannel = await getFailureChannel(client, config);
+
+  if (failureChannel) {
+    const inactiveUsers = await getUsersWithoutWeeklyActivity(window);
+
+    if (inactiveUsers.length > 0) {
+      const mentions = inactiveUsers.map((user) => `<@${user.discordUserId}>`).join(" ");
+      await failureChannel.send({
+        content: [
+          `Weekly LeetCode check-in: ${mentions}`,
+          "No accepted LeetCode submissions were tracked for you this week."
+        ].join("\n"),
+        allowedMentions: {
+          users: inactiveUsers.map((user) => user.discordUserId)
+        }
+      });
+    }
+  }
+
   await prisma.weeklyReportRun.create({
     data: {
       guildId: config.discordGuildId,
