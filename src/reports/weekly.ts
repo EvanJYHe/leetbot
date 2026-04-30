@@ -5,11 +5,17 @@ import { getOrCreateGuildConfig } from "../leetcode/polling.js";
 import { logger } from "../utils/logger.js";
 import { formatBreakdown, getReportSummary } from "./analytics.js";
 
+const DAY_MS = 24 * 60 * 60 * 1000;
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
 export interface WeeklyWindow {
   weekStart: Date;
   weekEnd: Date;
+}
+
+export interface DailyFailureWindow {
+  dayStart: Date;
+  dayEnd: Date;
 }
 
 export function getWeeklyWindow(config: AppConfig, now = new Date()): WeeklyWindow {
@@ -24,6 +30,19 @@ export function getWeeklyWindow(config: AppConfig, now = new Date()): WeeklyWind
   return {
     weekStart: new Date(weekEnd.getTime() - WEEK_MS),
     weekEnd
+  };
+}
+
+export function getDailyFailureWindow(config: AppConfig, now = new Date()): DailyFailureWindow {
+  const dayEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), config.weeklyReportHourUtc));
+
+  if (dayEnd > now) {
+    dayEnd.setUTCDate(dayEnd.getUTCDate() - 1);
+  }
+
+  return {
+    dayStart: new Date(dayEnd.getTime() - DAY_MS),
+    dayEnd
   };
 }
 
@@ -62,7 +81,14 @@ async function getFailureChannel(client: Client, config: AppConfig): Promise<Gui
   return channel as GuildTextBasedChannel;
 }
 
-async function getUsersWithoutWeeklyActivity(window: WeeklyWindow) {
+async function getUsersWithoutActivity(window: { dayStart?: Date; weekStart?: Date; dayEnd?: Date; weekEnd?: Date }) {
+  const start = window.dayStart ?? window.weekStart;
+  const end = window.dayEnd ?? window.weekEnd;
+
+  if (!start || !end) {
+    throw new Error("Missing activity window bounds");
+  }
+
   const [trackedUsers, activeEvents] = await Promise.all([
     prisma.user.findMany({
       orderBy: {
@@ -72,8 +98,8 @@ async function getUsersWithoutWeeklyActivity(window: WeeklyWindow) {
     prisma.trackedEvent.findMany({
       where: {
         occurredAt: {
-          gte: window.weekStart,
-          lt: window.weekEnd
+          gte: start,
+          lt: end
         }
       },
       select: {
@@ -85,6 +111,60 @@ async function getUsersWithoutWeeklyActivity(window: WeeklyWindow) {
   const activeDiscordUserIds = new Set(activeEvents.map((event) => event.discordUserId));
 
   return trackedUsers.filter((user) => !activeDiscordUserIds.has(user.discordUserId));
+}
+
+export async function postDailyFailurePing(client: Client, config: AppConfig, now = new Date()): Promise<boolean> {
+  const window = getDailyFailureWindow(config, now);
+  const existingRun = await prisma.dailyFailurePingRun.findUnique({
+    where: {
+      guildId_dayStart: {
+        guildId: config.discordGuildId,
+        dayStart: window.dayStart
+      }
+    }
+  });
+
+  if (existingRun) {
+    return false;
+  }
+
+  const failureChannel = await getFailureChannel(client, config);
+
+  if (!failureChannel) {
+    return false;
+  }
+
+  const inactiveUsers = await getUsersWithoutActivity(window);
+
+  if (inactiveUsers.length > 0) {
+    const mentions = inactiveUsers.map((user) => `<@${user.discordUserId}>`).join(" ");
+    await failureChannel.send({
+      content: [
+        `Daily LeetCode check-in: ${mentions}`,
+        "No accepted LeetCode submissions were tracked for you in the last day."
+      ].join("\n"),
+      allowedMentions: {
+        users: inactiveUsers.map((user) => user.discordUserId)
+      }
+    });
+  }
+
+  await prisma.dailyFailurePingRun.create({
+    data: {
+      guildId: config.discordGuildId,
+      dayStart: window.dayStart,
+      dayEnd: window.dayEnd
+    }
+  });
+
+  logger.info("Processed daily LeetCode failure ping", {
+    guildId: config.discordGuildId,
+    dayStart: window.dayStart.toISOString(),
+    dayEnd: window.dayEnd.toISOString(),
+    inactiveUserCount: inactiveUsers.length
+  });
+
+  return inactiveUsers.length > 0;
 }
 
 export async function buildWeeklyReportEmbeds(config: AppConfig, window = getWeeklyWindow(config)): Promise<EmbedBuilder[]> {
@@ -161,25 +241,6 @@ export async function postWeeklyReport(client: Client, config: AppConfig, now = 
 
   const embeds = await buildWeeklyReportEmbeds(config, window);
   await channel.send({ embeds });
-
-  const failureChannel = await getFailureChannel(client, config);
-
-  if (failureChannel) {
-    const inactiveUsers = await getUsersWithoutWeeklyActivity(window);
-
-    if (inactiveUsers.length > 0) {
-      const mentions = inactiveUsers.map((user) => `<@${user.discordUserId}>`).join(" ");
-      await failureChannel.send({
-        content: [
-          `Weekly LeetCode check-in: ${mentions}`,
-          "No accepted LeetCode submissions were tracked for you this week."
-        ].join("\n"),
-        allowedMentions: {
-          users: inactiveUsers.map((user) => user.discordUserId)
-        }
-      });
-    }
-  }
 
   await prisma.weeklyReportRun.create({
     data: {
